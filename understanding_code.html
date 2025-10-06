@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Calculator</title>
+</head>
+<body>
+  <h2>Simple Calculator</h2>
+  <p>Enter a mathematical expression and press <b>Enter</b> or click "Calculate".</p>
+
+  <!-- Input field for user to type expression -->
+  <input id="expr" type="text" placeholder="Calculate here"/>
+
+  <!-- Buttons for calculation and clearing -->
+  <button id="evalBtn">Calculate</button>
+  <button id="clearBtn">Clear</button>
+
+  <!-- Output area -->
+  <div id="result">Result will appear here</div>
+
+  <script>
+    // ---------------- TOKENIZE FUNCTION ----------------
+    // Breaks a string expression like "3 + 5 * (2 - 1)" into smaller parts (tokens)
+    function tokenize(s) {
+      const tokens = []; // store tokens here
+      const reNumber = /^[0-9]+(\.[0-9]+)?/; // pattern for numbers (integer or decimal)
+      s = s.replace(/\s+/g,''); // remove spaces from input
+      let i = 0;
+
+      // Loop through each character in string
+      while(i < s.length) {
+        const ch = s[i];
+
+        // If parenthesis found → push as a separate token
+        if(ch==='(' || ch===')'){ 
+          tokens.push(ch); 
+          i++; 
+          continue; 
+        }
+
+        // If operator found (+, -, *, /, %, ^)
+        if(/[+\-*/%^]/.test(ch)){
+          // Handle unary minus (negative numbers)
+          if(ch==='-'){
+            const prev = tokens.length ? tokens[tokens.length-1] : null;
+            // If '-' is at the start or after another operator, treat as unary
+            if(prev===null || prev==='(' || /[+\-*/%^]/.test(prev)){ 
+              tokens.push('u-'); // mark as unary minus
+              i++; 
+              continue; 
+            }
+          }
+          tokens.push(ch); // push operator token
+          i++; 
+          continue;
+        }
+
+        // If it's a number
+        const rest = s.slice(i);
+        const m = rest.match(reNumber);
+        if(m){ 
+          tokens.push(m[0]); // push the number string
+          i+=m[0].length; 
+          continue; 
+        }
+
+        // Invalid character
+        throw new Error('Invalid character: '+ch);
+      }
+      return tokens; // e.g. ["3","+","5","*","(","2","-","1",")"]
+    }
+
+    // ---------------- toRPN FUNCTION ----------------
+    // Converts infix notation (normal math) → Reverse Polish Notation (RPN)
+    // Example: "3 + 4 * 2" → ["3","4","2","*","+"]
+    // This helps with correct operator precedence.
+    function toRPN(tokens){
+      const out=[]; // output queue
+      const ops=[]; // operator stack
+
+      // Operator precedence (higher number = higher priority)
+      const prec={'u-':4,'^':3,'*':2,'/':2,'%':2,'+':1,'-':1};
+
+      // Operators that are right-associative (evaluated from right)
+      const rightAssoc={'^':true,'u-':true};
+
+      // Loop through tokens
+      for(const token of tokens){
+        if(!isNaN(token)) out.push(token); // if number → directly push to output
+        else if(token in prec){ // if operator
+          // Compare precedence and pop operators when necessary
+          while(ops.length){
+            const top = ops[ops.length-1];
+            if(top==='(') break;
+            const pTop = prec[top], pTok=prec[token];
+            if(pTop>pTok || (pTop===pTok && !rightAssoc[token])) 
+              out.push(ops.pop());
+            else break;
+          }
+          ops.push(token); // push new operator
+        } 
+        else if(token==='(') ops.push(token); // push left parenthesis
+        else if(token===')'){ // handle closing parenthesis
+          while(ops.length && ops[ops.length-1]!=='(') out.push(ops.pop());
+          if(!ops.length || ops.pop()!=='(') throw new Error('Mismatched parentheses');
+        } 
+        else throw new Error('Unknown token: '+token);
+      }
+
+      // Pop remaining operators
+      while(ops.length){
+        const t=ops.pop();
+        if(t==='('||t===')') throw new Error('Mismatched parentheses');
+        out.push(t);
+      }
+
+      return out; // return RPN array
+    }
+
+    // ---------------- evalRPN FUNCTION ----------------
+    // Evaluates an RPN expression using a stack
+    function evalRPN(rpn){
+      const stack=[];
+      for(const tok of rpn){
+        if(!isNaN(tok)) stack.push(Number(tok)); // push numbers to stack
+        else if(tok==='u-'){ 
+          // unary minus (negate top value)
+          if(stack.length<1) throw new Error('Invalid unary'); 
+          stack.push(-stack.pop()); 
+        }
+        else{
+          // binary operator: need 2 numbers from stack
+          if(stack.length<2) throw new Error('Invalid expression');
+          const b=stack.pop(), a=stack.pop();
+          let res;
+          // perform math operation
+          switch(tok){
+            case '+': res=a+b; break;
+            case '-': res=a-b; break;
+            case '*': res=a*b; break;
+            case '/': if(b===0) throw new Error('Division by zero'); res=a/b; break;
+            case '%': if(b===0) throw new Error('Division by zero'); res=a%b; break;
+            case '^': res=Math.pow(a,b); break;
+            default: throw new Error('Unknown operator: '+tok);
+          }
+          stack.push(res); // push result back to stack
+        }
+      }
+
+      // At the end, only one result should remain
+      if(stack.length!==1) throw new Error('Invalid expression');
+      return stack[0];
+    }
+
+    // ---------------- evaluateExpression FUNCTION ----------------
+    // Connects all steps: tokenize → convert to RPN → evaluate RPN
+    function evaluateExpression(input){
+      if(!input || !input.trim()) throw new Error('Empty expression');
+      return evalRPN(toRPN(tokenize(input)));
+    }
+
+    // ---------------- DOM ELEMENTS ----------------
+    const exprInput=document.getElementById('expr'); // text input box
+    const resDiv=document.getElementById('result'); // output display
+    const evalBtn=document.getElementById('evalBtn'); // calculate button
+    const clearBtn=document.getElementById('clearBtn'); // clear button
+
+    // Display result or error
+    function showResult(value){ resDiv.textContent=value; }
+    function showError(msg){ resDiv.textContent='Error: '+msg; }
+
+    // ---------------- CALCULATE FUNCTION ----------------
+    // Handles both button click and Enter key press
+    function calculate(){
+      try{
+        const out = evaluateExpression(exprInput.value); // run full evaluation
+        // If result is an integer → show directly, else round floating result
+        showResult(Number.isInteger(out)? out : parseFloat(out.toPrecision(12)));
+      }catch(e){ 
+        showError(e.message||e); // show any error message
+      }
+    }
+
+    // ---------------- BUTTON EVENT LISTENERS ----------------
+    // When "Calculate" button is clicked
+    evalBtn.addEventListener('click', calculate);
+
+    // When "Clear" button is clicked → reset everything
+    clearBtn.addEventListener('click', ()=>{
+      exprInput.value='';
+      resDiv.textContent='Result will appear here';
+    });
+
+    // ---------------- ENTER KEY SUPPORT ----------------
+    // When user presses Enter in the input box → trigger calculation
+    exprInput.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter'){ 
+        calculate();  // same as pressing "Calculate"
+        e.preventDefault(); // prevent default form submission
+      }
+    });
+
+    // ---------------- PLACEHOLDER BEHAVIOR ----------------
+    // Makes placeholder disappear while typing and reappear when empty
+    exprInput.addEventListener('focus', () => { exprInput.placeholder = ''; });
+    exprInput.addEventListener('blur', () => { 
+      if(exprInput.value==='') exprInput.placeholder='Calculate here'; 
+    });
+  </script>
+</body>
+</html>
