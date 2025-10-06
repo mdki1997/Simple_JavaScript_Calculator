@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Calculator</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background: #f0f4f8;
+    }
+
+    .calculator-box {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 30px 25px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      text-align: center;
+      width: 320px;
+    }
+
+    h2 {
+      margin-bottom: 5px;
+      color: #333;
+    }
+
+    p {
+      margin-top: 0;
+      margin-bottom: 20px;
+      color: #666;
+      font-size: 14px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+      margin-bottom: 15px;
+      transition: border-color 0.2s;
+    }
+
+    input[type="text"]:focus {
+      border-color: #4a90e2;
+      outline: none;
+    }
+
+    button {
+      padding: 10px 16px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin: 3px;
+      transition: background 0.2s;
+    }
+
+    #evalBtn {
+      background: #4a90e2;
+      color: #fff;
+    }
+
+    #evalBtn:hover {
+      background: #357ab8;
+    }
+
+    #clearBtn {
+      background: #f2f2f2;
+      color: #333;
+    }
+
+    #clearBtn:hover {
+      background: #e0e0e0;
+    }
+
+    .result {
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      min-height: 28px;
+      font-weight: bold;
+    }
+
+    .error { color: #d9534f; }
+  </style>
+</head>
+<body>
+  <div class="calculator-box">
+    <h2>Beautiful Calculator</h2>
+    <p>Enter a mathematical expression and click "Calculate" to see the result.</p>
+
+    <input id="expr" type="text" placeholder="Calculate here"/>
+    <div>
+      <button id="evalBtn">Calculate</button>
+      <button id="clearBtn">C</button>
+    </div>
+    <div id="result" class="result">Result will appear here</div>
+  </div>
+
+  <script>
+    // --- Calculator logic ---
+    function tokenize(s) {
+      const tokens = [];
+      const reNumber = /^[0-9]+(\.[0-9]+)?/;
+      s = s.replace(/\s+/g,'');
+      let i = 0;
+      while(i < s.length) {
+        const ch = s[i];
+        if(ch==='(' || ch===')'){ tokens.push(ch); i++; continue; }
+        if(/[+\-*/%^]/.test(ch)){
+          if(ch==='-'){
+            const prev = tokens.length ? tokens[tokens.length-1] : null;
+            if(prev===null || prev==='(' || /[+\-*/%^]/.test(prev)){ tokens.push('u-'); i++; continue; }
+          }
+          tokens.push(ch); i++; continue;
+        }
+        const rest = s.slice(i);
+        const m = rest.match(reNumber);
+        if(m){ tokens.push(m[0]); i+=m[0].length; continue; }
+        throw new Error('Invalid character: '+ch);
+      }
+      return tokens;
+    }
+
+    function toRPN(tokens){
+      const out=[], ops=[];
+      const prec={'u-':4,'^':3,'*':2,'/':2,'%':2,'+':1,'-':1};
+      const rightAssoc={'^':true,'u-':true};
+      for(const token of tokens){
+        if(!isNaN(token)) out.push(token);
+        else if(token in prec){
+          while(ops.length){
+            const top = ops[ops.length-1];
+            if(top==='(') break;
+            const pTop = prec[top], pTok=prec[token];
+            if(pTop>pTok || (pTop===pTok && !rightAssoc[token])) out.push(ops.pop());
+            else break;
+          }
+          ops.push(token);
+        } else if(token==='(') ops.push(token);
+        else if(token===')'){
+          while(ops.length && ops[ops.length-1]!=='(') out.push(ops.pop());
+          if(!ops.length || ops.pop()!=='(') throw new Error('Mismatched parentheses');
+        } else throw new Error('Unknown token: '+token);
+      }
+      while(ops.length){
+        const t=ops.pop();
+        if(t==='('||t===')') throw new Error('Mismatched parentheses');
+        out.push(t);
+      }
+      return out;
+    }
+
+    function evalRPN(rpn){
+      const stack=[];
+      for(const tok of rpn){
+        if(!isNaN(tok)) stack.push(Number(tok));
+        else if(tok==='u-'){ if(stack.length<1) throw new Error('Invalid unary'); stack.push(-stack.pop()); }
+        else{
+          if(stack.length<2) throw new Error('Invalid expression');
+          const b=stack.pop(), a=stack.pop();
+          let res;
+          switch(tok){
+            case '+': res=a+b; break;
+            case '-': res=a-b; break;
+            case '*': res=a*b; break;
+            case '/': if(b===0) throw new Error('Division by zero'); res=a/b; break;
+            case '%': if(b===0) throw new Error('Division by zero'); res=a%b; break;
+            case '^': res=Math.pow(a,b); break;
+            default: throw new Error('Unknown operator: '+tok);
+          }
+          stack.push(res);
+        }
+      }
+      if(stack.length!==1) throw new Error('Invalid expression');
+      return stack[0];
+    }
+
+    function evaluateExpression(input){
+      if(!input || !input.trim()) throw new Error('Empty expression');
+      return evalRPN(toRPN(tokenize(input)));
+    }
+
+    // --- UI ---
+    const exprInput=document.getElementById('expr');
+    const resDiv=document.getElementById('result');
+    const evalBtn=document.getElementById('evalBtn');
+    const clearBtn=document.getElementById('clearBtn');
+
+    function showResult(value){ resDiv.textContent=value; resDiv.classList.remove('error'); }
+    function showError(msg){ resDiv.textContent='Error: '+msg; resDiv.classList.add('error'); }
+
+    evalBtn.addEventListener('click', ()=>{
+      try{
+        const out = evaluateExpression(exprInput.value);
+        showResult(Number.isInteger(out)? out : parseFloat(out.toPrecision(12)));
+      }catch(e){ showError(e.message||e); }
+    });
+
+    clearBtn.addEventListener('click', ()=>{
+      exprInput.value='';
+      resDiv.textContent='Result will appear here';
+      resDiv.classList.remove('error');
+    });
+
+    exprInput.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter'){ evalBtn.click(); e.preventDefault(); }
+    });
+
+    // --- placeholder disappear/reappear ---
+    exprInput.addEventListener('focus', () => {
+      exprInput.placeholder = '';
+    });
+
+    exprInput.addEventListener('blur', () => {
+      if(exprInput.value === '') exprInput.placeholder = 'Calculate here';
+    });
+
+  </script>
+</body>
+</html>
